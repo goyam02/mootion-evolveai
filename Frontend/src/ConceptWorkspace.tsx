@@ -3,22 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, Settings2, Globe, FileBadge, Zap, Headphones, ArrowUp, ArrowLeft, Mic, Layers, FileX } from 'lucide-react';
 
-const pcmToBase64 = (pcmData: Float32Array) => {
-  const buffer = new ArrayBuffer(pcmData.length * 2);
-  const view = new DataView(buffer);
-  for (let i = 0; i < pcmData.length; i++) {
-    let s = Math.max(-1, Math.min(1, pcmData[i]));
-    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-};
-
-type ExpandedPanel = 'none' | 'storyboard' | 'playground' | 'universe' | 'prove-it' | 'challenge' | 'listen' | 'flashcards' | 'stop';
+type ExpandedPanel = 'none' | 'storyboard' | 'playground' | 'universe' | 'prove-it' | 'challenge' | 'listen' | 'flashcards' | 'wrong-one';
 
 export default function ConceptWorkspace() {
   const { nodeId } = useParams();
@@ -27,11 +12,6 @@ export default function ConceptWorkspace() {
   const navigate = useNavigate();
 
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>('none');
-  const [isRecording, setIsRecording] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const nextStartTimeRef = useRef(0);
-  const streamRef = useRef<MediaStream | null>(null);
   const [messages, setMessages] = useState([
     {
       id: '1',
@@ -43,96 +23,363 @@ export default function ConceptWorkspace() {
   const [showOptions, setShowOptions] = useState(false);
 
   const isLeftExpanded = expandedPanel === 'storyboard' || expandedPanel === 'playground' || expandedPanel === 'universe';
-  const isRightExpanded = expandedPanel === 'prove-it' || expandedPanel === 'challenge' || expandedPanel === 'listen' || expandedPanel === 'flashcards' || expandedPanel === 'stop';
+  const isRightExpanded = expandedPanel === 'prove-it' || expandedPanel === 'challenge' || expandedPanel === 'listen' || expandedPanel === 'flashcards' || expandedPanel === 'wrong-one';
 
-  const stopRecording = () => {
-    if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+  const [challengeData, setChallengeData] = useState<any[]>([]);
+  const [currentChallengeQ, setCurrentChallengeQ] = useState(0);
+  const [challengeScore, setChallengeScore] = useState(0);
+  const [challengeStatus, setChallengeStatus] = useState<'playing' | 'completed'>('playing');
+  const [challengeSelected, setChallengeSelected] = useState<number | null>(null);
+  const [challengeTimeLeft, setChallengeTimeLeft] = useState(30);
+
+  const [flashcardData, setFlashcardData] = useState<any[]>([]);
+  const [wrongOneData, setWrongOneData] = useState<any[]>([]);
+  const [currentWrongOneQ, setCurrentWrongOneQ] = useState(0);
+  const [wrongOneScore, setWrongOneScore] = useState(0);
+  const [wrongOneStatus, setWrongOneStatus] = useState<'playing' | 'completed'>('playing');
+  const [wrongOneSelected, setWrongOneSelected] = useState<number | null>(null);
+  const [wrongOneTimeLeft, setWrongOneTimeLeft] = useState(30);
+
+  const [listenSentences, setListenSentences] = useState<string[]>([]);
+  const [listenIndex, setListenIndex] = useState(0);
+  const [displayedListenIndex, setDisplayedListenIndex] = useState(-1);
+  const [isPlayingListen, setIsPlayingListen] = useState(false);
+  const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const [currentFlashcard, setCurrentFlashcard] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [isLoadingPractice, setIsLoadingPractice] = useState(false);
+
+  // Prove It Chat State
+  const [isRecording, setIsRecording] = useState(false);
+  const proveItListRef = useRef<HTMLDivElement>(null);
+  const [proveItMessages, setProveItMessages] = useState<{role:string, text:string}[]>([
+    { role: 'model', text: `Hi! I'm ready to learn about ${topic}. Can you explain it to me?` }
+  ]);
+  const [proveItInput, setProveItInput] = useState('');
+  const [isProveItLoading, setIsProveItLoading] = useState(false);
+  const [isSessionEnded, setIsSessionEnded] = useState(false);
+
+  useEffect(() => {
+    if (expandedPanel === 'challenge' && challengeData.length === 0) {
+      setIsLoadingPractice(true);
+      fetch('/api/practice/challenge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic })
+      }).then(r => r.json()).then(data => {
+        setChallengeData(Array.isArray(data) ? data : []);
+        setIsLoadingPractice(false);
+      }).catch(e => {
+        console.error(e);
+        setIsLoadingPractice(false);
+      });
+    } else if (expandedPanel === 'flashcards' && flashcardData.length === 0) {
+      setIsLoadingPractice(true);
+      fetch('/api/practice/flashcards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic })
+      }).then(r => r.json()).then(data => {
+        setFlashcardData(Array.isArray(data) ? data : []);
+        setIsLoadingPractice(false);
+      }).catch(e => {
+        console.error(e);
+        setIsLoadingPractice(false);
+      });
+    } else if (expandedPanel === 'listen' && listenSentences.length === 0) {
+      setIsLoadingPractice(true);
+      fetch('/api/practice/listen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic })
+      }).then(r => r.json()).then(data => {
+        setListenSentences(data.sentences || []);
+        setIsLoadingPractice(false);
+        setIsPlayingListen(true);
+      }).catch(e => {
+        console.error(e);
+        setIsLoadingPractice(false);
+      });
+    } else if (expandedPanel === 'wrong-one' && wrongOneData.length === 0) {
+      setIsLoadingPractice(true);
+      fetch('/api/practice/wrong-one', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic })
+      }).then(r => r.json()).then(data => {
+        setWrongOneData(Array.isArray(data) ? data : []);
+        setIsLoadingPractice(false);
+      }).catch(e => {
+        console.error(e);
+        setIsLoadingPractice(false);
+      });
     }
-    if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
+  }, [expandedPanel]);
+
+  const listenAudioCtxRef = useRef<AudioContext | null>(null);
+  const listenSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    
+    const playCurrentSentence = async () => {
+       if (expandedPanel === 'listen' && isPlayingListen && listenSentences.length > 0) {
+          if (listenIndex < listenSentences.length) {
+             try {
+                 if (!listenAudioCtxRef.current) {
+                     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+                     listenAudioCtxRef.current = new AudioContextClass({ sampleRate: 24000 });
+                 }
+                 const audioCtx = listenAudioCtxRef.current;
+                 if (audioCtx.state === 'suspended') {
+                    await audioCtx.resume();
+                 }
+
+                 const res = await fetch("/api/practice/tts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: listenSentences[listenIndex] }),
+                 });
+                 if (cancel) return;
+                 const data = await res.json();
+                 
+                 if (data.audioBase64 && !cancel) {
+                     const binary = atob(data.audioBase64);
+                     const bytes = new Uint8Array(binary.length);
+                     for (let i = 0; i < binary.length; i++) {
+                       bytes[i] = binary.charCodeAt(i);
+                     }
+                     const int16Array = new Int16Array(bytes.buffer);
+                     const float32Array = new Float32Array(int16Array.length);
+                     for (let i = 0; i < int16Array.length; i++) {
+                       float32Array[i] = int16Array[i] / 0x8000;
+                     }
+                     const buffer = audioCtx.createBuffer(1, float32Array.length, 24000);
+                     buffer.getChannelData(0).set(float32Array);
+                     
+                     if (cancel) return;
+
+                     const source = audioCtx.createBufferSource();
+                     source.buffer = buffer;
+                     source.connect(audioCtx.destination);
+                     listenSourceRef.current = source;
+                     
+                     source.onended = () => {
+                        if (!cancel) {
+                           setListenIndex(prev => prev + 1);
+                        }
+                     };
+                     source.start(0);
+                 } else {
+                     if (!cancel) setListenIndex(prev => prev + 1);
+                 }
+             } catch (err) {
+                 console.error("TTS fetch failed:", err);
+                 if (!cancel) setListenIndex(prev => prev + 1);
+             }
+          } else {
+             setIsPlayingListen(false);
+          }
+       }
+    };
+    
+    playCurrentSentence();
+
+    return () => {
+       cancel = true;
+       if (listenSourceRef.current) {
+           listenSourceRef.current.stop();
+           listenSourceRef.current.disconnect();
+           listenSourceRef.current = null;
+       }
+    };
+  }, [listenSentences, listenIndex, isPlayingListen, expandedPanel]);
+
+  useEffect(() => {
+    if (expandedPanel === 'challenge' && challengeStatus === 'playing' && challengeData.length > 0) {
+      if (challengeSelected !== null) {
+         const timer = setTimeout(() => {
+            if (currentChallengeQ < challengeData.length - 1) {
+               setCurrentChallengeQ(q => q + 1);
+               setChallengeSelected(null);
+               setChallengeTimeLeft(30);
+            } else {
+               setChallengeStatus('completed');
+            }
+         }, 5000);
+         return () => clearTimeout(timer);
+      } else {
+         if (challengeTimeLeft > 0) {
+            const timer = setTimeout(() => setChallengeTimeLeft(t => t - 1), 1000);
+            return () => clearTimeout(timer);
+         } else {
+            setChallengeSelected(-1); // -1 means time out / wrong
+         }
+      }
     }
-    if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-        audioCtxRef.current = null;
+  }, [expandedPanel, challengeStatus, challengeData.length, challengeTimeLeft, challengeSelected, currentChallengeQ, challengeData]);
+
+  useEffect(() => {
+    if (expandedPanel === 'wrong-one' && wrongOneStatus === 'playing' && wrongOneData.length > 0) {
+      if (wrongOneSelected !== null) {
+         const timer = setTimeout(() => {
+            if (currentWrongOneQ < wrongOneData.length - 1) {
+               setCurrentWrongOneQ(q => q + 1);
+               setWrongOneSelected(null);
+               setWrongOneTimeLeft(30);
+            } else {
+               setWrongOneStatus('completed');
+            }
+         }, 5000);
+         return () => clearTimeout(timer);
+      } else {
+         if (wrongOneTimeLeft > 0) {
+            const timer = setTimeout(() => setWrongOneTimeLeft(t => t - 1), 1000);
+            return () => clearTimeout(timer);
+         } else {
+            setWrongOneSelected(-1); // -1 means time out / wrong
+         }
+      }
     }
-    setIsRecording(false);
+  }, [expandedPanel, wrongOneStatus, wrongOneData.length, wrongOneTimeLeft, wrongOneSelected, currentWrongOneQ, wrongOneData]);
+
+  useEffect(() => {
+    if (proveItListRef.current) {
+       proveItListRef.current.scrollTop = proveItListRef.current.scrollHeight;
+    }
+  }, [proveItMessages, isProveItLoading]);
+
+  const resetChallenge = () => {
+    setCurrentChallengeQ(0);
+    setChallengeScore(0);
+    setChallengeStatus('playing');
+    setChallengeSelected(null);
+    setChallengeTimeLeft(30);
+  };
+
+  const resetWrongOne = () => {
+    setCurrentWrongOneQ(0);
+    setWrongOneScore(0);
+    setWrongOneStatus('playing');
+    setWrongOneSelected(null);
+    setWrongOneTimeLeft(30);
+  };
+
+  const recognitionRef = useRef<any>(null);
+
+  const stopLiveConversation = () => {
+     if (recognitionRef.current) {
+        recognitionRef.current.stop();
+     }
+     setIsRecording(false);
+  };
+
+  const toggleRecording = () => {
+    if (isSessionEnded) return;
+    if (isRecording) {
+      stopLiveConversation();
+      return;
+    }
+    
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+       alert("Speech recognition not supported in this browser.");
+       return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onresult = (event: any) => {
+       const text = event.results[event.results.length - 1][0].transcript;
+       if (text.trim()) {
+          setProveItInput(text);
+          handleProveItSubmit(text);
+          // Stop recording to wait for AI response
+          recognition.stop();
+       }
+    };
+    recognition.onerror = (e: any) => {
+       console.error("Speech recognition error", e);
+       setIsRecording(false);
+    };
+    recognition.onend = () => {
+       setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
   };
 
   useEffect(() => {
-     return stopRecording;
+    return () => {
+       stopLiveConversation();
+       if ('speechSynthesis' in window) {
+           window.speechSynthesis.cancel();
+       }
+    };
   }, []);
 
-  const toggleRecording = async () => {
-    if (isRecording) {
-      stopRecording();
-      return;
+  const handleEndSession = async () => {
+    if (isSessionEnded || isProveItLoading) return;
+    setIsSessionEnded(true);
+    setIsProveItLoading(true);
+    
+    stopLiveConversation();
+    
+    setProveItMessages(prev => [...prev, { role: 'user', text: "[Ended Session.]" }]);
+    
+    try {
+      const res = await fetch('/api/practice/prove-it', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, history: [], message: "The user has ended the voice learning session. Please provide a brief generic wrap-up message and a grade estimate based on standard expectations.", isEndSession: true })
+      });
+      const data = await res.json();
+      setProveItMessages(prev => [...prev, { role: 'model', text: data.text }]);
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setIsProveItLoading(false);
     }
-    setIsRecording(true);
+  };
+
+  const handleProveItSubmit = async (textOverride?: string) => {
+    const textToSend = typeof textOverride === 'string' ? textOverride : proveItInput;
+    if (!textToSend.trim() || isProveItLoading) return;
+    
+    const newHistory = [...proveItMessages, { role: 'user', text: textToSend }];
+    setProveItMessages(newHistory);
+    setProveItInput('');
+    setIsProveItLoading(true);
 
     try {
-        const audioCtx = new AudioContext({ sampleRate: 16000 });
-        audioCtxRef.current = audioCtx;
-        nextStartTimeRef.current = audioCtx.currentTime;
-
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/live?topic=${encodeURIComponent(topic)}`;
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
-
-        const source = audioCtx.createMediaStreamSource(stream);
-        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
-
-        processor.onaudioprocess = (e) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
-            ws.send(JSON.stringify({ audio: base64 }));
-          }
-        };
-
-        ws.onmessage = (event) => {
-          const msg = JSON.parse(event.data);
-          if (msg.audio) {
-            const binary = atob(msg.audio);
-            const len = binary.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-            const int16Array = new Int16Array(bytes.buffer);
-            const float32Array = new Float32Array(int16Array.length);
-            for (let i = 0; i < int16Array.length; ++i) {
-              float32Array[i] = int16Array[i] / 32768;
-            }
-            const audioBuffer = audioCtx.createBuffer(1, float32Array.length, 16000);
-            audioBuffer.getChannelData(0).set(float32Array);
-            
-            const source = audioCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioCtx.destination);
-            
-            const now = audioCtx.currentTime;
-            if (nextStartTimeRef.current < now) nextStartTimeRef.current = now;
-            source.start(nextStartTimeRef.current);
-            nextStartTimeRef.current += audioBuffer.duration;
-          }
-          if (msg.interrupted) {
-             nextStartTimeRef.current = audioCtx.currentTime;
-          }
-        };
-
-        ws.onclose = stopRecording;
-        ws.onerror = stopRecording;
+      const res = await fetch('/api/practice/prove-it', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, history: proveItMessages, message: textToSend })
+      });
+      const data = await res.json();
+      setProveItMessages(prev => [...prev, { role: 'model', text: data.text }]);
+      
+      if ('speechSynthesis' in window) {
+         window.speechSynthesis.cancel();
+         const utterance = new SpeechSynthesisUtterance(data.text);
+         const voices = window.speechSynthesis.getVoices();
+         const preferred =
+            voices.find(v => v.name.includes('Google US English')) ||
+            voices.find(v => v.lang.startsWith('en'));
+         if (preferred) utterance.voice = preferred;
+         window.speechSynthesis.speak(utterance);
+      }
     } catch(e) {
-        console.error("Mic error:", e);
-        stopRecording();
+      console.error(e);
+    } finally {
+      setIsProveItLoading(false);
     }
   };
 
@@ -159,30 +406,31 @@ export default function ConceptWorkspace() {
   };
 
   return (
-    <div className="h-screen w-full bg-[#fafaf8] flex p-4 gap-4 overflow-hidden relative"
+    <div className="h-screen w-full bg-[#fafaf8] flex flex-col lg:flex-row p-2 md:p-4 lg:p-6 gap-2 md:gap-4 lg:gap-6 overflow-hidden relative"
          style={{ backgroundImage: 'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)', backgroundSize: '24px 24px', backgroundPosition: 'center top' }}>
       {/* LEFT SIDEBAR - VISUAL SPACE */}
       <motion.div 
         layout
         transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
         animate={{
-          width: expandedPanel === 'none' ? '280px' : isLeftExpanded ? 'calc(100% - 384px)' : '0px',
+          flex: expandedPanel === 'none' ? 1 : isLeftExpanded ? 3 : 0.001,
           opacity: isRightExpanded ? 0 : 1,
           pointerEvents: isRightExpanded ? 'none' : 'auto',
-          borderWidth: isRightExpanded ? '0px' : '1px'
+          borderWidth: isRightExpanded ? '0px' : '1px',
+          padding: isRightExpanded ? '0px' : ''
         }}
-        className="bg-white rounded-3xl border-gray-200 shadow-sm flex flex-col h-full flex-shrink-0 relative overflow-hidden"
+        style={{ minWidth: 0, minHeight: 0 }}
+        className={`bg-white rounded-3xl border-gray-200 shadow-sm flex flex-col h-full flex-shrink-0 relative overflow-hidden ${isRightExpanded ? 'invisible lg:flex' : 'flex'}`}
       >
-        <div className="p-5 flex items-center gap-2 border-b border-gray-100 pb-4">
-           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-           <h2 className="font-semibold text-gray-800">Visual space</h2>
+        <div className="p-6 flex items-center justify-center border-b border-gray-100 pb-5">
+           <h2 className="font-bold text-gray-900 uppercase tracking-widest text-sm">Visual space</h2>
         </div>
         
         {isLeftExpanded ? (
           <div className="flex-1 w-full h-full bg-gray-50 flex flex-col items-center justify-center relative">
             <button 
               onClick={() => setExpandedPanel('none')} 
-              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-100 z-50"
+              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-100 z-[100] cursor-pointer"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
@@ -191,34 +439,31 @@ export default function ConceptWorkspace() {
             {expandedPanel === 'universe' && <div className="text-xl font-medium text-gray-500 flex flex-col items-center gap-4"><Globe className="w-12 h-12 text-indigo-500" /> 3D Universe View...</div>}
           </div>
         ) : (
-          <div className="p-4 flex flex-col gap-3 flex-1">
-             <button onClick={() => setExpandedPanel('storyboard')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-blue-100 text-blue-600 rounded-full p-2.5">
+          <div className="p-4 grid grid-cols-2 gap-3 flex-1 content-start overflow-y-auto">
+             <button onClick={() => setExpandedPanel('storyboard')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <Play className="w-5 h-5 fill-current" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Storyboard</h3>
-                   <p className="text-xs text-gray-500">Kepler's laws</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Storyboard</h3>
                 </div>
              </button>
              
-             <button onClick={() => setExpandedPanel('playground')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-green-100 text-green-600 rounded-full p-2.5">
+             <button onClick={() => setExpandedPanel('playground')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <Settings2 className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Playground</h3>
-                   <p className="text-xs text-gray-500">Orbit simulator</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Playground</h3>
                 </div>
              </button>
 
-             <button onClick={() => setExpandedPanel('universe')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-indigo-100 text-indigo-600 rounded-full p-2.5">
+             <button onClick={() => setExpandedPanel('universe')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <Globe className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Universe</h3>
-                   <p className="text-xs text-gray-500">Solar system</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Universe</h3>
                 </div>
              </button>
           </div>
@@ -230,24 +475,25 @@ export default function ConceptWorkspace() {
         layout
         transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
         animate={{
-            width: expandedPanel === 'none' ? 'calc(100% - 624px)' : isRightExpanded ? '320px' : '320px',
+            flex: expandedPanel === 'none' ? 1.5 : 1,
             opacity: 1
         }}
-        className="bg-white rounded-3xl border border-gray-200 shadow-sm flex flex-col h-full flex-shrink-0 overflow-hidden"
+        style={{ minWidth: 0, minHeight: 0 }}
+        className="bg-white rounded-3xl border border-gray-200 shadow-sm flex flex-col h-full flex-shrink-0 relative overflow-hidden"
       >
-        <div className="p-5 flex items-center justify-between border-b border-gray-100 pb-4">
+        <div className="p-6 flex items-center justify-between border-b border-gray-100 pb-5">
            <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/roadmap')} className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors">
+              <button onClick={() => navigate('/roadmap')} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
                   <ArrowLeft className="w-5 h-5 text-gray-400 hover:text-black" />
               </button>
-              <h2 className="font-semibold text-gray-900">{topic}</h2>
+              <h2 className="font-bold text-gray-900 uppercase tracking-widest text-sm line-clamp-1">{topic}</h2>
            </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
            {messages.map(msg => (
              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-               <div className={`max-w-[85%] rounded-2xl p-4 leading-relaxed ${
+               <div className={`max-w-[85%] rounded-2xl p-4 leading-relaxed break-words whitespace-pre-wrap ${
                  msg.role === 'user' 
                   ? 'bg-indigo-50 text-indigo-950 rounded-br-sm' 
                   : 'bg-gray-50 text-gray-800 rounded-bl-sm border border-gray-100'
@@ -299,120 +545,441 @@ export default function ConceptWorkspace() {
         layout
         transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
         animate={{
-          width: expandedPanel === 'none' ? '280px' : isRightExpanded ? 'calc(100% - 384px)' : '0px',
+          flex: expandedPanel === 'none' ? 1 : isRightExpanded ? 3 : 0.001,
           opacity: isLeftExpanded ? 0 : 1,
           pointerEvents: isLeftExpanded ? 'none' : 'auto',
-          borderWidth: isLeftExpanded ? '0px' : '1px'
+          borderWidth: isLeftExpanded ? '0px' : '1px',
+          padding: isLeftExpanded ? '0px' : ''
         }}
-        className="bg-white rounded-3xl border-gray-200 shadow-sm flex flex-col h-full flex-shrink-0 relative overflow-hidden"
+        style={{ minWidth: 0, minHeight: 0 }}
+        className={`bg-white rounded-3xl border-gray-200 shadow-sm flex flex-col h-full flex-shrink-0 relative overflow-hidden ${isLeftExpanded ? 'invisible lg:flex' : 'flex'}`}
       >
-        <div className="p-5 flex items-center gap-2 border-b border-gray-100 pb-4 relative z-10 bg-white">
-           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-           <h2 className="font-semibold text-gray-800">Practice space</h2>
+        <div className="p-6 flex items-center justify-center border-b border-gray-100 pb-5 relative z-10 bg-white">
+           <h2 className="font-bold text-gray-900 uppercase tracking-widest text-sm">Practice space</h2>
         </div>
         
         {isRightExpanded ? (
           <div className="flex-1 w-full h-full bg-gray-50 flex flex-col items-center justify-center relative">
             <button 
               onClick={() => setExpandedPanel('none')} 
-              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-100 z-50"
+              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-100 z-[100] cursor-pointer"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
-            {expandedPanel === 'prove-it' && (
-              <div className="w-full h-full flex flex-col items-center justify-center p-8 relative z-10">
-                 <div className="w-full max-w-2xl bg-white border border-gray-100 shadow-xl rounded-3xl p-12 text-center flex flex-col items-center">
-                    <h3 className="text-3xl font-bold text-gray-900 mb-8">Teach the AI</h3>
-                    <button onClick={toggleRecording} className="w-32 h-32 rounded-full bg-green-50 flex items-center justify-center border-4 border-green-100 hover:bg-green-100 hover:scale-105 transition-all outline-none focus:ring-4 focus:ring-green-200 text-green-500 mb-8 relative group">
-                       {isRecording ? <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping"></div> : <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping group-hover:hidden"></div>}
-                       <Mic className={`w-12 h-12 relative z-10 ${isRecording ? 'animate-pulse text-green-600' : ''}`} />
-                    </button>
-                    <p className="text-gray-500 text-lg">
-                       {isRecording ? "Listening & thinking... Speak your mind." : `Click to start speaking. I will ask counter-questions to test your understanding of ${topic}.`}
-                    </p>
-                 </div>
-              </div>
+         {expandedPanel === 'prove-it' && (
+              <div className="w-full h-full flex flex-col p-8 relative z-10 overflow-hidden">
+                 <div className="flex-1 w-full max-w-4xl mx-auto bg-white border border-gray-100 shadow-xl rounded-3xl p-6 flex flex-col mt-auto mb-auto relative">
+                     <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-3"><FileBadge className="w-6 h-6 text-black"/> Teach the AI: {topic}</h3>
+                     </div>
+                     {isSessionEnded ? (
+                        <div className="flex-1 w-full flex flex-col items-center justify-center pt-8">
+                           <div className="bg-indigo-50 border border-indigo-100 rounded-3xl p-8 max-w-2xl mx-auto shadow-sm w-full">
+                              <h4 className="text-xl font-bold text-gray-900 mb-4">Session Wrap-up</h4>
+                              {isProveItLoading ? (
+                                 <div className="animate-pulse text-gray-500">Generating your feedback...</div>
+                              ) : (
+                                 <div className="text-left leading-relaxed text-gray-800 whitespace-pre-wrap">
+                                    {proveItMessages[proveItMessages.length - 1]?.text}
+                                 </div>
+                              )}
+                           </div>
+                           <button onClick={() => {
+                              setIsSessionEnded(false);
+                              setProveItMessages([{ role: 'model', text: '' }]);
+                           }} className="mt-8 px-8 py-4 bg-black text-white rounded-full font-bold uppercase tracking-wider text-sm hover:bg-gray-800 transition-colors">
+                              Try Again
+                           </button>
+                        </div>
+                     ) : (
+                        <div className="flex-1 w-full flex flex-col items-center relative min-h-[400px]">
+                           <div className="flex-1 w-full flex flex-col items-center justify-center gap-8 mt-12 mb-20">
+                               <button 
+                                  onClick={toggleRecording} 
+                                  className={`w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center transition-all ${isRecording ? 'bg-gray-800 text-white animate-[pulse_2s_ease-in-out_infinite] shadow-[0_0_40px_rgba(0,0,0,0.15)] border-8 border-white' : 'bg-[#f4f4f5] text-gray-500 hover:bg-[#e4e4e7] shadow-sm border-8 border-white'}`}
+                               >
+                                  <Mic className={`w-16 h-16 ${isRecording ? 'text-white' : 'text-gray-400'}`}/>
+                               </button>
+                               <div className="text-center">
+                                  <p className="text-[22px] font-bold text-gray-900 mb-2 tracking-tight">
+                                     {isRecording ? "Listening..." : "Tap to Start Teaching"}
+                                  </p>
+                                  <p className="text-gray-500 text-[15px]">
+                                     {isRecording ? "Speak clearly into your microphone..." : "The AI student is waiting to learn."}
+                                  </p>
+                               </div>
+                               <div className="text-center animate-pulse text-indigo-500 min-h-[30px] font-medium w-full px-8 text-lg">
+                                   {isRecording && proveItInput.trim() ? proveItInput : ''}
+                               </div>
+                           </div>
+                           <div className="absolute bottom-4 w-full flex justify-center">
+                              {!isSessionEnded && (
+                                 <button onClick={handleEndSession} className="px-10 py-3.5 bg-black text-white rounded-full font-semibold tracking-wide hover:bg-gray-800 transition-colors shadow-md">
+                                    End Session
+                                 </button>
+                              )}
+                           </div>
+                        </div>
+                     )}
+                     <div className="hidden" ref={proveItListRef}></div>
+                  </div>
+               </div>
             )}
             {expandedPanel === 'challenge' && (
-              <div className="w-full h-full flex flex-col items-center justify-center p-8 relative z-10">
-                 <div className="w-full max-w-4xl bg-white border border-gray-100 shadow-xl rounded-3xl p-10">
-                    <h3 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3"><Zap className="w-6 h-6 text-orange-500"/> Interactive Quiz: {topic}</h3>
-                    <div className="flex gap-10">
-                       <div className="flex-1 space-y-4">
-                          <div className="p-5 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50 text-gray-400 font-medium text-center h-20 flex items-center justify-center">Drag correct answer here</div>
-                          <div className="p-5 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50 text-gray-400 font-medium text-center h-20 flex items-center justify-center">Drag correct answer here</div>
-                          <div className="p-5 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50 text-gray-400 font-medium text-center h-20 flex items-center justify-center">Drag correct answer here</div>
-                       </div>
-                       <div className="w-72 space-y-4">
-                          <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-5 cursor-move hover:border-blue-400 hover:shadow-md font-semibold text-gray-800 transition-all active:scale-95 flex items-center gap-3"><div className="w-2 h-2 bg-blue-500 rounded-full"></div> Gravity</div>
-                          <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-5 cursor-move hover:border-blue-400 hover:shadow-md font-semibold text-gray-800 transition-all active:scale-95 flex items-center gap-3"><div className="w-2 h-2 bg-green-500 rounded-full"></div> Mass</div>
-                          <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-5 cursor-move hover:border-blue-400 hover:shadow-md font-semibold text-gray-800 transition-all active:scale-95 flex items-center gap-3"><div className="w-2 h-2 bg-indigo-500 rounded-full"></div> Orbit</div>
-                       </div>
+              <div className="w-full h-full p-4 md:p-8 relative z-10 flex items-center justify-center">
+                 <div className="w-full max-w-4xl max-h-full bg-white border border-gray-100 shadow-xl rounded-3xl flex flex-col min-h-0">
+                    <div className="p-6 md:p-10 pb-6 shrink-0 border-b border-gray-50 flex justify-between items-center z-10">
+                       <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-3"><Zap className="w-6 h-6 text-black"/> Interactive Quiz: {topic}</h3>
+                       {challengeData.length > 0 && challengeStatus === 'playing' && (
+                          <div className="flex items-center gap-4">
+                             <div className={`font-mono text-lg font-bold ${challengeTimeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-gray-700'}`}>
+                                00:{challengeTimeLeft.toString().padStart(2, '0')}
+                             </div>
+                             <div className="text-gray-500 font-medium">Question {currentChallengeQ + 1} of {challengeData.length}</div>
+                          </div>
+                       )}
                     </div>
+                    
+                    
+                     {isLoadingPractice ? (
+                       <div className="text-center py-10 animate-pulse text-gray-500">Generating challenge...</div>
+                    ) : challengeData.length > 0 ? (
+                       challengeStatus === 'playing' ? (
+                          <div className="flex flex-col gap-6">
+                             <div className="mb-4">
+                                <p className="font-semibold text-xl mb-6">{challengeData[currentChallengeQ].question}</p>
+                                <div className="grid grid-cols-1 gap-3">
+                                   {challengeData[currentChallengeQ].options.map((opt: string, optIdx: number) => (
+                                     <button 
+                                        key={optIdx} 
+                                        onClick={() => {
+                                           setChallengeSelected(optIdx);
+                                           if (optIdx === challengeData[currentChallengeQ].correctAnswerIndex) {
+                                              setChallengeScore(s => s + 1);
+                                           }
+                                        }} 
+                                        disabled={challengeSelected !== null}
+                                        className={`border text-left shadow-sm rounded-2xl p-5 font-medium transition-all ${
+                                           challengeSelected === null 
+                                            ? 'bg-white border-gray-200 hover:border-black text-gray-800' 
+                                            : optIdx === challengeData[currentChallengeQ].correctAnswerIndex
+                                               ? 'bg-green-50 border-green-500 text-green-900'
+                                               : challengeSelected === optIdx
+                                                  ? 'bg-red-50 border-red-500 text-red-900'
+                                                  : 'bg-white border-gray-200 text-gray-400 opacity-50'
+                                        }`}
+                                     >
+                                        <div className="flex items-center gap-3">
+                                           <div className={`w-6 h-6 rounded border flex items-center justify-center text-sm ${challengeSelected !== null && optIdx === challengeData[currentChallengeQ].correctAnswerIndex ? 'bg-green-500 border-green-600 text-white' : 'border-gray-300'}`}>
+                                              {String.fromCharCode(65 + optIdx)}
+                                           </div>
+                                           {opt}
+                                        </div>
+                                     </button>
+                                   ))}
+                                </div>
+                             </div>
+                             {challengeSelected !== null && (
+                                <div className="mt-2 flex justify-end shrink-0">
+                                   <button 
+                                      onClick={() => {
+                                         if (currentChallengeQ < challengeData.length - 1) {
+                                            setCurrentChallengeQ(q => q + 1);
+                                            setChallengeSelected(null);
+                                            setChallengeTimeLeft(30);
+                                         } else {
+                                            setChallengeStatus('completed');
+                                         }
+                                      }}
+                                      className="px-8 py-3 bg-black text-white rounded-xl font-medium hover:bg-gray-800 transition-colors"
+                                   >
+                                      {currentChallengeQ < challengeData.length - 1 ? 'Next Question' : 'View Results'}
+                                   </button>
+                                </div>
+                             )}
+                          </div>
+                       ) : (
+                           <div className="text-center py-12 flex flex-col items-center">
+                             <div className="w-32 h-32 bg-gray-50 rounded-full flex items-center justify-center mb-6">
+                                <span className="text-4xl font-bold text-gray-900">{challengeScore}/{challengeData.length}</span>
+                             </div>
+                             <h4 className="text-2xl font-bold text-gray-900 mb-2">Quiz Completed!</h4>
+                             <p className="text-gray-500 text-lg mb-8">You scored {Math.round((challengeScore / challengeData.length) * 100)}% accuracy.</p>
+                             <button onClick={resetChallenge} className="px-8 py-4 bg-black text-white rounded-full font-bold uppercase tracking-wider text-sm hover:bg-gray-800 transition-colors">
+                                Retry Quiz
+                             </button>
+                          </div>
+                       )
+                    ) : (
+                       <div className="text-center py-10 text-gray-500">No questions available.</div>
+                    )}
                  </div>
               </div>
             )}
             {expandedPanel === 'listen' && (
-              <div className="w-full h-full flex flex-col items-center justify-center p-8 relative">
-                  <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none z-0"></div>
-                  <div className="w-64 h-64 rounded-full bg-blue-50 flex items-center justify-center border-8 border-blue-100 shadow-[0_0_80px_rgba(59,130,246,0.3)] relative z-10 text-blue-500 animate-[bounce_4s_infinite]">
-                     <Headphones className="w-24 h-24" />
+              <div className="w-full h-full flex flex-col items-center relative bg-white overflow-hidden min-h-[400px]">
+                  <div className="absolute inset-0 bg-[#fafafa] z-0"></div>
+                  {isPlayingListen && <div className="absolute inset-0 bg-gray-100/50 animate-[pulse_4s_ease-in-out_infinite] pointer-events-none z-0"></div>}
+                  
+                  <div className="flex-1 w-full flex flex-col items-center justify-center gap-8 mt-12 mb-20 relative z-10">
+                     <div className={`w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center relative transition-all duration-700 ${isPlayingListen ? 'bg-white shadow-[0_0_80px_rgba(0,0,0,0.06)] border-8 border-white scale-105' : 'bg-gray-100 shadow-sm border-8 border-white'}`}>
+                        <Headphones className={`w-16 h-16 transition-all duration-700 ${isPlayingListen ? 'text-black' : 'text-gray-400'}`} />
+                     </div>
+                     
+                     <div className="max-w-md w-full flex flex-col items-center gap-6">
+                       {isLoadingPractice ? (
+                         <p className="text-sm text-gray-400 animate-pulse tracking-wide font-medium">Synthesizing audio...</p>
+                       ) : (
+                         <>
+                           <div className="min-h-[40px] px-4 w-full flex flex-col items-center justify-center">
+                              {displayedListenIndex < 0 ? (
+                                <p className="text-[15px] text-gray-400 animate-pulse tracking-wide text-center">Loading audio...</p>
+                              ) : (
+                                <p className="text-base leading-relaxed text-gray-800 font-medium tracking-wide text-center animate-[fadeIn_0.5s_ease-out] line-clamp-2" key={displayedListenIndex}>
+                                   {listenSentences[displayedListenIndex] || "Finished."}
+                                </p>
+                              )}
+                           </div>
+                           <div className="flex justify-center gap-3">
+                              <button 
+                                 onClick={() => {
+                                    if (isPlayingListen) setIsPlayingListen(false);
+                                    else setIsPlayingListen(true);
+                                 }} 
+                                 className="w-12 h-12 flex items-center justify-center bg-transparent border border-gray-200 text-gray-800 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-colors focus:outline-none"
+                                 title={isPlayingListen ? 'Pause' : 'Play'}
+                              >
+                                 {isPlayingListen ? (
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                                 ) : (
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                 )}
+                              </button>
+                              <button 
+                                 onClick={() => {
+                                    setListenIndex(0);
+                                    setDisplayedListenIndex(-1);
+                                    setIsPlayingListen(true);
+                                 }} 
+                                 className="w-12 h-12 flex items-center justify-center bg-transparent border border-gray-200 text-gray-500 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-colors focus:outline-none"
+                                 title="Restart"
+                              >
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                              </button>
+                           </div>
+                         </>
+                       )}
+                     </div>
                   </div>
-                  <p className="mt-12 text-2xl font-semibold text-blue-900 relative z-10 tracking-tight">Listening to AI explaining {topic}...</p>
               </div>
             )}
-            {expandedPanel === 'flashcards' && <div className="text-xl font-medium text-gray-500 flex flex-col items-center gap-4 relative z-10"><Layers className="w-12 h-12 text-purple-500" /> Flashcards Interface...</div>}
-            {expandedPanel === 'stop' && <div className="text-xl font-medium text-gray-500 flex flex-col items-center gap-4 relative z-10"><FileX className="w-12 h-12 text-rose-500" /> Stop / Report Issue...</div>}
+            {expandedPanel === 'flashcards' && (
+               <div className="w-full h-full flex flex-col items-center justify-center p-8 relative z-10">
+                 <div className="w-full max-w-2xl text-center flex flex-col items-center mt-auto mb-auto perspective-1000">
+                    <div className="flex justify-between items-center w-full mb-8">
+                       <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-3"><Layers className="w-6 h-6 text-black"/> Flashcards: {topic}</h3>
+                       {flashcardData.length > 0 && !isLoadingPractice && (
+                          <button
+                             onClick={() => {
+                                setIsFlipped(false);
+                                setTimeout(() => {
+                                   const shuffled = [...flashcardData].sort(() => Math.random() - 0.5);
+                                   setFlashcardData(shuffled);
+                                   setCurrentFlashcard(0);
+                                }, 300);
+                             }}
+                             className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl font-medium hover:bg-gray-200 transition-colors flex items-center gap-2"
+                          >
+                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+                             Shuffle
+                          </button>
+                       )}
+                    </div>
+                    {isLoadingPractice ? (
+                       <div className="text-center py-10 animate-pulse text-gray-500">Generating flashcards...</div>
+                    ) : flashcardData.length > 0 ? (
+                       <>
+                          <div 
+                             onClick={() => setIsFlipped(!isFlipped)} 
+                             className="w-full h-64 md:h-80 cursor-pointer relative preserve-3d transition-transform duration-500"
+                             style={{ transform: isFlipped ? 'rotateX(180deg)' : 'rotateX(0deg)', transformStyle: 'preserve-3d' }}
+                          >
+                             <div className="absolute inset-0 backface-hidden bg-white border border-gray-100 shadow-xl rounded-3xl p-10 flex items-center justify-center text-center">
+                                <span className="absolute top-6 left-6 text-2xl font-bold text-gray-200 pointer-events-none">Q</span>
+                                <h4 className="text-3xl font-bold text-gray-800 leading-tight">{flashcardData[currentFlashcard].front}</h4>
+                                <div className="absolute bottom-6 text-gray-400 text-sm font-medium">Click to flip</div>
+                             </div>
+                             <div className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 shadow-xl rounded-3xl p-10 flex items-center justify-center text-center" style={{ transform: 'rotateX(180deg)' }}>
+                                <span className="absolute top-6 left-6 text-2xl font-bold text-indigo-200 pointer-events-none">A</span>
+                                <p className="text-2xl text-indigo-950 font-medium leading-relaxed">{flashcardData[currentFlashcard].back}</p>
+                                <div className="absolute bottom-6 text-indigo-300 text-sm font-medium">Click to flip back</div>
+                             </div>
+                          </div>
+                          <div className="flex gap-4 mt-8 w-full justify-between items-center">
+                             <button 
+                                onClick={() => { setIsFlipped(false); setCurrentFlashcard(prev => Math.max(0, prev - 1)); }} 
+                                disabled={currentFlashcard === 0}
+                                className="px-6 py-3 bg-white border border-gray-200 rounded-full font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                             >Previous</button>
+                             <div className="px-6 py-3 text-gray-500 font-medium">
+                                Card {currentFlashcard + 1} of {flashcardData.length}
+                             </div>
+                             <button 
+                                onClick={() => { setIsFlipped(false); setCurrentFlashcard(prev => Math.min(flashcardData.length - 1, prev + 1)); }} 
+                                disabled={currentFlashcard === flashcardData.length - 1}
+                                className="px-6 py-3 bg-black border border-black text-white rounded-full font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                             >Next</button>
+                          </div>
+                       </>
+                    ) : (
+                       <div className="text-center py-10 text-gray-500">No flashcards available.</div>
+                    )}
+                 </div>
+               </div>
+            )}
+            {expandedPanel === 'wrong-one' && (
+              <div className="w-full h-full p-4 md:p-8 relative z-10 flex items-center justify-center">
+<div className="w-full max-w-4xl max-h-full bg-white border border-gray-100 shadow-xl rounded-3xl flex flex-col min-h-0">
+<div className="p-6 md:p-10 pb-6 shrink-0 border-b border-gray-50 flex justify-between items-center z-10">
+                       <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-3"><FileX className="w-6 h-6 text-black"/> Find the WRONG Statement: {topic}</h3>
+                       {wrongOneData.length > 0 && wrongOneStatus === 'playing' && (
+                          <div className="flex items-center gap-4">
+                             <div className={`font-mono text-lg font-bold ${wrongOneTimeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-gray-700'}`}>
+                                00:{wrongOneTimeLeft.toString().padStart(2, '0')}
+                             </div>
+                             <div className="text-gray-500 font-medium">Question {currentWrongOneQ + 1} of {wrongOneData.length}</div>
+                          </div>
+                       )}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6 md:p-10 min-h-0">
+                    {isLoadingPractice ? (
+                       <div className="text-center py-10 animate-pulse text-gray-500">Generating trick questions...</div>
+                    ) : wrongOneData.length > 0 ? (
+                       wrongOneStatus === 'playing' ? (
+                          <div className="flex flex-col gap-6">
+                             <div className="bg-white p-2 rounded-2xl">
+                                <p className="font-semibold text-lg md:text-xl mb-6 text-gray-900">Which statement is INCORRECT?</p>
+                                <div className="grid grid-cols-1 gap-3 mb-4">
+                                   {wrongOneData[currentWrongOneQ].options.map((opt: string, optIdx: number) => (
+                                     <button 
+                                        key={optIdx} 
+                                        onClick={() => {
+                                            setWrongOneSelected(optIdx);
+                                            if (optIdx === wrongOneData[currentWrongOneQ].wrongAnswerIndex) {
+                                               setWrongOneScore(s => s + 1);
+                                            }
+                                        }}
+                                        disabled={wrongOneSelected !== null}
+                                        className={`border text-left shadow-sm rounded-2xl p-5 font-medium transition-all ${
+                                           wrongOneSelected === null 
+                                            ? 'bg-white border-gray-200 hover:border-black text-gray-800' 
+                                            : optIdx === wrongOneData[currentWrongOneQ].wrongAnswerIndex
+                                               ? 'bg-green-50 border-green-500 text-green-900'
+                                               : wrongOneSelected === optIdx
+                                                  ? 'bg-red-50 border-red-500 text-red-900'
+                                                  : 'bg-white border-gray-200 text-gray-400 opacity-50'
+                                        }`}
+                                     >
+                                        <div className="flex items-center gap-3">
+                                           <div className={`w-8 h-8 rounded-full border flex items-center justify-center text-sm shrink-0 font-bold ${wrongOneSelected !== null && optIdx === wrongOneData[currentWrongOneQ].wrongAnswerIndex ? "bg-green-500 border-green-600 text-white" : wrongOneSelected === optIdx && optIdx !== wrongOneData[currentWrongOneQ].wrongAnswerIndex ? "bg-red-500 border-red-600 text-white" : "border-gray-200 text-gray-500 bg-gray-50"}`}>
+                                              {String.fromCharCode(65 + optIdx)}
+                                           </div>
+                                           {opt}
+                                        </div>
+                                     </button>
+                                   ))}
+                                </div>
+                                {wrongOneSelected !== null && (
+                                   <div className="mt-4 p-5 bg-blue-50 text-blue-900 text-sm rounded-xl border border-blue-100">
+                                      <span className="font-bold text-base block mb-2">Explanation:</span> 
+                                      {wrongOneData[currentWrongOneQ].explanation}
+                                   </div>
+                                )}
+                             </div>
+                             {wrongOneSelected !== null && (
+                                <div className="mt-4 flex justify-end">
+                                   <button 
+                                      onClick={() => {
+                                         if (currentWrongOneQ < wrongOneData.length - 1) {
+                                            setCurrentWrongOneQ(q => q + 1);
+                                            setWrongOneSelected(null);
+                                            setWrongOneTimeLeft(30);
+                                         } else {
+                                            setWrongOneStatus('completed');
+                                         }
+                                      }}
+                                      className="px-8 py-3 bg-black text-white rounded-xl font-medium hover:bg-gray-800 transition-colors"
+                                   >
+                                      {currentWrongOneQ < wrongOneData.length - 1 ? 'Next Question' : 'View Results'}
+                                   </button>
+                                </div>
+                             )}
+                          </div>
+                       ) : (
+                           <div className="text-center py-12 flex flex-col items-center">
+                             <div className="w-32 h-32 bg-gray-50 rounded-full flex items-center justify-center mb-6">
+                                <span className="text-4xl font-bold text-gray-900">{wrongOneScore}/{wrongOneData.length}</span>
+                             </div>
+                             <h4 className="text-2xl font-bold text-gray-900 mb-2">Quiz Completed!</h4>
+                             <p className="text-gray-500 text-lg mb-8">You scored {Math.round((wrongOneScore / wrongOneData.length) * 100)}% accuracy.</p>
+                             <button onClick={resetWrongOne} className="px-8 py-4 bg-black text-white rounded-full font-bold uppercase tracking-wider text-sm hover:bg-gray-800 transition-colors">
+                                Retry Quiz
+                             </button>
+                          </div>
+                       )
+                    ) : (
+                       <div className="text-center py-10 text-gray-500">No trick questions available.</div>
+                    )}
+                    </div>
+                 </div>
+              </div>
+            )}
           </div>
         ) : (
-           <div className="p-4 flex flex-col gap-3 flex-1">
-             <button onClick={() => setExpandedPanel('prove-it')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-amber-100 text-amber-700 rounded-full p-2.5">
+           <div className="p-4 grid grid-cols-2 gap-3 flex-1 content-start overflow-y-auto">
+             <button onClick={() => setExpandedPanel('prove-it')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <FileBadge className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Prove It</h3>
-                   <p className="text-xs text-gray-500">Teach the AI</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Prove It</h3>
                 </div>
              </button>
              
-             <button onClick={() => setExpandedPanel('challenge')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-red-50 text-red-600 rounded-full p-2.5">
+             <button onClick={() => setExpandedPanel('challenge')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <Zap className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Challenge</h3>
-                   <p className="text-xs text-gray-500">3 questions ready</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Challenge</h3>
                 </div>
              </button>
 
-             <button onClick={() => setExpandedPanel('listen')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-blue-50 text-blue-600 rounded-full p-2.5">
+             <button onClick={() => setExpandedPanel('listen')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <Headphones className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Listen</h3>
-                   <p className="text-xs text-gray-500">Audio lessons</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Listen</h3>
                 </div>
              </button>
 
-             <button onClick={() => setExpandedPanel('flashcards')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-purple-100 text-purple-600 rounded-full p-2.5">
+             <button onClick={() => setExpandedPanel('flashcards')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Flashcards</h3>
-                   <p className="text-xs text-gray-500">Review concepts</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Flashcards</h3>
                 </div>
              </button>
 
-             <button onClick={() => setExpandedPanel('stop')} className="bg-gray-50 border border-gray-100 hover:border-gray-300 rounded-2xl p-4 flex items-center gap-4 transition-all text-left">
-                <div className="bg-rose-100 text-rose-600 rounded-full p-2.5">
+             <button onClick={() => setExpandedPanel('wrong-one')} className="bg-white border border-gray-200 hover:border-black rounded-2xl p-4 flex flex-col justify-center items-center gap-3 transition-all text-center aspect-square shadow-sm">
+                <div className="text-black bg-[#fafaf8] rounded-full p-3 border border-gray-100">
                    <FileX className="w-5 h-5" />
                 </div>
                 <div>
-                   <h3 className="font-semibold text-gray-900 pb-0.5">Wrong one</h3>
-                   <p className="text-xs text-gray-500">Stop / Report</p>
+                   <h3 className="font-bold text-gray-900 text-sm">Wrong one</h3>
                 </div>
              </button>
           </div>

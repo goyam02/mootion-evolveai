@@ -4,11 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useDropzone } from 'react-dropzone';
 
 const TOPICS = [
-  "Computer Science", "Artificial Intelligence", "Robotics", "Data Science",
-  "Mathematics", "Physics", "Chemistry", "Biology", "Engineering",
-  "Astronomy", "Electronics", "Machine Learning", "Quantum Computing",
-  "Bioinformatics", "Nanotechnology", "Cybersecurity", "Blockchain",
-  "Web Development", "Genetics", "Aerospace", "Neuroscience", "Ecology"
+  "Physics", "Chemistry", "Biology", "Mathematics", "Coding",
+  "Engineering", "Robotics", "Astronomy", "Data Science", "Artificial Intelligence"
 ];
 
 const AnimatedGridBackground = ({ step }: { step?: number }) => {
@@ -132,51 +129,55 @@ export default function Onboarding() {
       animate: { opacity: 1, x: 0 },
       exit: { opacity: 0, x: -20, position: 'absolute' as const },
       transition: { duration: 0.3, ease: 'easeOut' },
-      className: "flex flex-col w-full"
+      className: "flex flex-col w-full h-full"
     };
 
     switch (step) {
       case 1:
         return (
           <motion.div key="step-1" {...stepProps}>
-            <h2 className="text-4xl font-bold mb-3 text-gray-900 leading-tight">What should we call you?</h2>
-            <p className="text-gray-500 mb-8 font-medium">Let's start with your name.</p>
-            <input 
-              type="text" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter your name" 
-              className="w-full bg-white border border-gray-200 shadow-sm rounded-xl py-4 px-6 text-black placeholder-gray-400 font-medium focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all mb-6"
-            />
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900 leading-[1.15] tracking-tight shrink-0">What should we call you?</h2>
+            <p className="text-sm md:text-base text-gray-600 mb-6 font-medium shrink-0">Let's start with your name.</p>
+            <div className="flex flex-col flex-1 justify-center min-h-0 pb-2">
+               <input 
+                 type="text" 
+                 value={name}
+                 onChange={(e) => setName(e.target.value)}
+                 placeholder="Enter your name" 
+                 className="w-full bg-white border border-gray-200 shadow-sm rounded-xl py-3 md:py-4 px-4 md:px-5 text-black placeholder-gray-400 font-medium focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all mb-2"
+               />
+            </div>
           </motion.div>
         );
       case 2:
         return (
           <motion.div key="step-2" {...stepProps}>
-            <h2 className="text-4xl font-bold mb-3 text-gray-900 leading-tight">What's your email?</h2>
-            <p className="text-gray-500 mb-8 font-medium">We'll use this to keep your progress safe.</p>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email" 
-              className="w-full bg-white border border-gray-200 shadow-sm rounded-xl py-4 px-6 text-black placeholder-gray-400 font-medium focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all mb-6"
-            />
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900 leading-[1.15] tracking-tight shrink-0">What's your email?</h2>
+            <p className="text-sm md:text-base text-gray-600 mb-6 font-medium shrink-0">We'll use this to keep your progress safe.</p>
+            <div className="flex flex-col flex-1 justify-center min-h-0 pb-2">
+               <input 
+                 type="email" 
+                 value={email}
+                 onChange={(e) => setEmail(e.target.value)}
+                 placeholder="Enter your email" 
+                 className="w-full bg-white border border-gray-200 shadow-sm rounded-xl py-3 md:py-4 px-4 md:px-5 text-black placeholder-gray-400 font-medium focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all mb-2"
+               />
+            </div>
           </motion.div>
         );
       case 3:
         return (
           <motion.div key="step-3" {...stepProps}>
-            <h2 className="text-4xl font-bold mb-4 text-gray-900 leading-[1.15] tracking-tight">Help us personalize<br/>your learning experience.</h2>
-            <p className="text-gray-600 mb-8 font-medium">Select up to 5 topics that interest you.</p>
-            <div className="flex flex-wrap gap-x-3 gap-y-4">
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900 leading-[1.15] tracking-tight shrink-0">Help us personalize<br/>your learning experience.</h2>
+            <p className="text-sm md:text-base text-gray-600 mb-4 font-medium shrink-0">Select up to 5 topics that interest you.</p>
+            <div className="flex flex-wrap gap-2 overflow-y-auto min-h-0 content-start flex-1 pb-4 pr-2">
               {TOPICS.map(topic => {
                 const isSelected = selectedTopics.includes(topic);
                 return (
                   <button
                     key={topic}
                     onClick={() => toggleTopic(topic)}
-                    className={`px-5 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`px-3 py-2 md:px-4 md:py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isSelected 
                         ? 'border-[1.5px] border-black text-white bg-black' 
                         : 'border border-gray-100 text-gray-500 hover:border-gray-300 shadow-[0_2px_8px_rgba(0,0,0,0.02)] bg-white'
@@ -192,14 +193,14 @@ export default function Onboarding() {
       case 4:
          return (
           <motion.div key="step-4" {...stepProps}>
-            <h2 className="text-4xl font-bold mb-3 text-gray-900 leading-[1.15] tracking-tight">How quickly do you grasp information?</h2>
-            <p className="text-gray-600 mb-8 font-medium">Be honest, this helps us tailor the pace.</p>
-            <div className="w-full flex flex-col gap-4">
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900 leading-[1.15] tracking-tight shrink-0">What is your learning style?</h2>
+            <p className="text-sm md:text-base text-gray-600 mb-4 font-medium shrink-0">Everyone learns differently.</p>
+            <div className="w-full flex-1 flex flex-col gap-2 overflow-y-auto min-h-0 justify-center pb-2">
               {['Visual (Images/Videos)', 'Auditory (Listening)', 'Reading/Writing', 'Kinesthetic (Doing)'].map((style) => (
                 <button
                   key={style}
                   onClick={() => setLearningStyle(style)}
-                  className={`w-full py-5 px-6 text-left rounded-xl transition-all duration-200 font-medium shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
+                  className={`w-full py-3 px-4 md:px-5 text-sm md:text-base text-left rounded-xl transition-all duration-200 font-medium shadow-[0_2px_8px_rgba(0,0,0,0.02)] shrink-0 ${
                     learningStyle === style
                       ? 'border-[1.5px] border-black bg-black text-white'
                       : 'border border-gray-100 bg-white text-gray-600 hover:border-gray-300'
@@ -214,14 +215,14 @@ export default function Onboarding() {
        case 5:
         return (
           <motion.div key="step-5" {...stepProps}>
-            <h2 className="text-4xl font-bold mb-3 text-gray-900 leading-[1.15] tracking-tight">What is your learning style?</h2>
-             <p className="text-gray-600 mb-8 font-medium">Everyone learns differently.</p>
-            <div className="w-full flex flex-col gap-4">
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900 leading-[1.15] tracking-tight shrink-0">How quickly do you grasp information?</h2>
+             <p className="text-sm md:text-base text-gray-600 mb-4 font-medium shrink-0">Be honest, this helps us tailor the pace.</p>
+            <div className="w-full flex-1 flex flex-col gap-2 overflow-y-auto min-h-0 justify-center pb-2">
               {['Very quickly', 'Quickly', 'Average pace', 'Take my time'].map((pace) => (
                 <button
                   key={pace}
                   onClick={() => setGraspInfo(pace)}
-                  className={`w-full py-5 px-6 text-left rounded-xl transition-all duration-200 font-medium shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
+                  className={`w-full py-3 px-4 md:px-5 text-sm md:text-base text-left rounded-xl transition-all duration-200 font-medium shadow-[0_2px_8px_rgba(0,0,0,0.02)] shrink-0 ${
                     graspInfo === pace
                       ? 'border-[1.5px] border-black bg-black text-white'
                       : 'border border-gray-100 bg-white text-gray-600 hover:border-gray-300'
@@ -249,7 +250,7 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] font-sans text-black flex flex-col items-center pt-10 px-8 relative">
+    <div className="h-screen h-[100dvh] overflow-hidden bg-[#fafaf8] font-sans text-black flex flex-col items-center justify-center p-4 md:p-8 relative">
       <AnimatedGridBackground step={step} />
       <div className="w-full max-w-3xl flex items-center mb-16 px-4 md:px-0 relative z-10 hidden">
         <div className="flex items-center gap-2">
@@ -262,9 +263,9 @@ export default function Onboarding() {
         </div>
       </div>
 
-      <div className="w-full max-w-[500px] flex-1 flex flex-col justify-start relative z-10 bg-white border border-gray-200 rounded-3xl p-8 md:p-10 shadow-sm min-h-[460px] mt-10 mb-10">
+      <div className="w-full max-w-[500px] flex flex-col relative z-10 bg-white border border-gray-200 rounded-3xl p-6 md:p-8 shadow-sm h-[520px] max-h-full">
         {/* Progress Bars */}
-        <div className="w-full mb-10">
+        <div className="w-full mb-6 shrink-0">
           <div className="flex gap-2 mb-3 w-[80%] md:w-[60%]">
             {[1, 2, 3, 4, 5].map((s) => (
               <div key={s} className="h-1.5 flex-1 rounded-full bg-gray-200 overflow-hidden relative">
@@ -281,14 +282,14 @@ export default function Onboarding() {
           </div>
         </div>
 
-        <div className="relative w-full flex-1">
+        <div className="relative w-full flex-1 min-h-0">
           <AnimatePresence mode="popLayout">
             {renderStep()}
           </AnimatePresence>
         </div>
         
         {/* Bottom Navigation */}
-        <div className="w-full flex justify-end items-center mt-auto pb-4 pt-16 relative z-20">
+        <div className="w-full flex justify-end items-center mt-4 shrink-0 relative z-20">
           <button 
             onClick={handleNext}
             className="font-semibold text-black hover:text-gray-600 transition-colors flex items-center gap-1 text-base tracking-wide"

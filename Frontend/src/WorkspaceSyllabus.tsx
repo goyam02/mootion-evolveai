@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useDropzone } from 'react-dropzone';
 import { AnimatedGridBackground } from './WorkspaceSelection';
+import LoadingOverlay from './LoadingOverlay';
 
 export default function WorkspaceSyllabus() {
   const navigate = useNavigate();
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles: File[]) => {
@@ -22,12 +24,52 @@ export default function WorkspaceSyllabus() {
     maxFiles: 1
   } as any);
 
+  const handleUploadAndContinue = async () => {
+    if (!syllabusFile) return;
+    setIsLoading(true);
+
+    try {
+      const startTime = Date.now();
+      const formData = new FormData();
+      formData.append('syllabus', syllabusFile);
+
+      const response = await fetch('/api/generate-roadmap/file', {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) {
+        let errorMsg = `Server error: ${response.status} ${response.statusText}`;
+        try {
+          const errData = await response.json();
+          if (errData.error) errorMsg = errData.error;
+        } catch(e) {}
+        throw new Error(errorMsg);
+      }
+      const data = await response.json();
+      
+      const elapsed = Date.now() - startTime;
+      const minLoadingTime = 9000;
+      if (elapsed < minLoadingTime) {
+        await new Promise(resolve => setTimeout(resolve, minLoadingTime - elapsed));
+      }
+
+      navigate('/roadmap?type=syllabus&topic=Custom Syllabus', { state: { roadmapData: data } });
+    } catch (e) {
+      console.error(e);
+      setIsLoading(false);
+      alert("Failed to analyze syllabus.");
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#fafaf8] font-sans text-black flex flex-col pt-20 px-8 relative overflow-hidden">
+    <div className="min-h-screen bg-[#fafaf8] font-sans text-black flex flex-col justify-center items-center px-8 relative overflow-hidden">
       <AnimatedGridBackground step={6} />
       
-      <div className="relative z-10 w-full max-w-5xl mx-auto flex flex-col flex-1 pb-20 items-center mt-12">
-         <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-2xl bg-white border border-gray-200 rounded-3xl p-10 shadow-sm relative">
+      <div className="relative z-10 w-full max-w-5xl flex flex-col justify-center items-center">
+         <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-2xl bg-white border border-gray-200 rounded-3xl p-10 shadow-sm relative overflow-hidden">
+            <AnimatePresence>
+                {isLoading && <LoadingOverlay type="document" />}
+            </AnimatePresence>
             <button onClick={() => navigate('/workspace')} className="absolute top-8 left-8 text-gray-400 hover:text-black transition-colors">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
             </button>
@@ -63,8 +105,8 @@ export default function WorkspaceSyllabus() {
               </div>
               <button 
                 className="bg-black text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-gray-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" 
-                onClick={() => navigate('/roadmap?type=syllabus')}
-                disabled={!syllabusFile}
+                onClick={handleUploadAndContinue}
+                disabled={!syllabusFile || isLoading}
               >
                 Upload and continue
               </button>

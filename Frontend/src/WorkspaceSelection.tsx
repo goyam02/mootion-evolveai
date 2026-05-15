@@ -20,7 +20,7 @@ export const AnimatedGridBackground = ({ step }: { step?: number }) => {
         let exclude = false;
         if (step === 6) {
           const centerC = Math.floor(cols / 2);
-          if (r >= 2 && r <= 12 && c >= centerC - 16 && c <= centerC + 16) {
+          if (r >= 5 && r <= 20 && c >= centerC - 16 && c <= centerC + 16) {
             exclude = true;
           }
         }
@@ -76,14 +76,14 @@ export default function WorkspaceSelection() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] font-sans text-black flex flex-col pt-20 px-8 relative overflow-hidden">
+    <div className="min-h-screen bg-[#fafaf8] font-sans text-black flex flex-col justify-center items-center px-8 relative overflow-hidden">
       <AnimatedGridBackground step={6} />
       
-      <div className="relative z-10 w-full max-w-5xl mx-auto flex flex-col flex-1 pb-20">
+      <div className="relative z-10 w-full max-w-5xl flex flex-col justify-center items-center mt-20">
         <motion.div 
            initial={{ opacity: 0, y: 20 }} 
            animate={{ opacity: 1, y: 0 }} 
-           className="w-full text-center mb-16 mt-8"
+           className="w-full text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-medium text-gray-900 tracking-tight">What do you want to learn?</h2>
         </motion.div>

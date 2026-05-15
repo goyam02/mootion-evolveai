@@ -320,7 +320,7 @@ const GhostSection = () => {
 
   return (
     <div ref={containerRef} className="w-full relative z-20 -mt-16 md:-mt-24 h-[350vh]">
-      <section className="w-full min-h-screen bg-[#fafaf8] flex flex-col justify-center sticky top-0">
+      <section id="about" className="w-full min-h-screen bg-[#fafaf8] flex flex-col justify-center sticky top-0">
         
         <div className="relative w-full flex flex-col lg:flex-row justify-between px-8 md:px-16 lg:px-24 pt-10 md:pt-16 pb-4 md:pb-8">
           
@@ -572,9 +572,8 @@ function Home() {
               Home
               <span className="absolute -bottom-2 left-0 w-full h-[2px] bg-black"></span>
             </a>
-            <a href="#" className="hover:text-black transition-colors">About Us</a>
-            <a href="#" className="hover:text-black transition-colors">Blog</a>
-            <a href="#" className="hover:text-black transition-colors">Q&A</a>
+            <a href="#about" className="hover:text-black transition-colors">About Us</a>
+            <a href="#contact" className="hover:text-black transition-colors">Contact Us</a>
           </div>
           
           <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-black">

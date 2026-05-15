@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ReactFlow, 
   Background, 
@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion } from 'motion/react';
-import { BookOpen, CheckCircle2, Circle } from 'lucide-react';
+import { BookOpen, Circle } from 'lucide-react';
 import dagre from 'dagre';
 
 const nodeWidth = 280;
@@ -24,7 +24,13 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   
   const isHorizontal = direction === 'LR';
-  dagreGraph.setGraph({ rankdir: direction });
+  dagreGraph.setGraph({ 
+    rankdir: direction,
+    ranksep: 120,
+    nodesep: 40,
+    marginx: 20,
+    marginy: 20 
+  });
 
   nodes.forEach((node) => {
     dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
@@ -42,8 +48,6 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
       ...node,
       targetPosition: isHorizontal ? Position.Left : Position.Top,
       sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
-      // We are shifting the dagre node position (anchor=center center) to the top left
-      // so it matches the React Flow node anchor point (top left).
       position: {
         x: nodeWithPosition.x - nodeWidth / 2,
         y: nodeWithPosition.y - nodeHeight / 2,
@@ -55,7 +59,7 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
 };
 
 // Custom Node Component
-const CustomNode = ({ data }: any) => {
+const CustomNode = ({ data, targetPosition, sourcePosition }: any) => {
   const isCompleted = data.status === 'completed';
   const isInProgress = data.status === 'in-progress';
   
@@ -64,13 +68,13 @@ const CustomNode = ({ data }: any) => {
   let icon = <Circle className="w-5 h-5 text-gray-300" />;
   
   if (isCompleted) {
-    borderColor = 'border-green-500';
-    bgColor = 'bg-green-50';
-    icon = <CheckCircle2 className="w-5 h-5 text-green-600" />;
+    borderColor = 'border-gray-800';
+    bgColor = 'bg-white';
+    icon = <div className="w-5 h-5 rounded-full border-2 border-gray-800 bg-gray-200" />;
   } else if (isInProgress) {
-    borderColor = 'border-yellow-400';
-    bgColor = 'bg-yellow-50';
-    icon = <div className="w-5 h-5 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin" />;
+    borderColor = 'border-gray-400';
+    bgColor = 'bg-white';
+    icon = <div className="w-5 h-5 rounded-full border-2 border-gray-400 bg-gray-100" />;
   }
 
   return (
@@ -80,7 +84,7 @@ const CustomNode = ({ data }: any) => {
       transition={{ duration: 0.4 }}
       className={`px-5 py-4 shadow-sm rounded-2xl border-2 ${borderColor} ${bgColor} flex items-center gap-4 w-[280px] cursor-pointer hover:shadow-md transition-shadow`}
     >
-      <Handle type="target" position={Position.Top} className="opacity-0" />
+      <Handle type="target" position={targetPosition || Position.Top} className="opacity-0" />
       <div className="flex-shrink-0">
         {icon}
       </div>
@@ -88,7 +92,7 @@ const CustomNode = ({ data }: any) => {
         <h4 className="font-semibold text-gray-900 text-sm leading-tight">{data.label}</h4>
         {data.description && <p className="text-xs text-gray-500 mt-1 line-clamp-1">{data.description}</p>}
       </div>
-      <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      <Handle type="source" position={sourcePosition || Position.Bottom} className="opacity-0" />
     </motion.div>
   );
 };
@@ -100,24 +104,112 @@ const nodeTypes = {
 export default function Roadmap() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const topic = searchParams.get('topic') || 'Machine Learning';
+  const location = useLocation();
+  const topic = searchParams.get('topic') || 'Solar System';
   const isSyllabus = searchParams.get('type') === 'syllabus';
 
-  const initialNodes = [
-    { id: '1', type: 'custom', data: { label: `Introduction to ${topic}`, description: 'Core concepts and history', status: 'completed' }, position: { x: 0, y: 0 } },
-    { id: '2', type: 'custom', data: { label: 'Foundational Principles', description: 'The math and logic behind it', status: 'in-progress' }, position: { x: 0, y: 0 } },
-    { id: '3', type: 'custom', data: { label: 'Advanced Topics', description: 'Deep dive into complex areas', status: 'untouched' }, position: { x: 0, y: 0 } },
-    { id: '4', type: 'custom', data: { label: 'Practical Applications', description: 'Real-world use cases', status: 'untouched' }, position: { x: 0, y: 0 } },
-    { id: '5', type: 'custom', data: { label: 'Future Trends', description: 'Where the field is heading', status: 'untouched' }, position: { x: 0, y: 0 } }
+  const stateData = location.state?.roadmapData;
+
+  const defaultNodes = [
+    { id: 'root', type: 'custom', data: { label: 'Solar System Overview', description: 'Comprehensive guide', status: 'completed' }, position: { x: 0, y: 0 } },
+
+    { id: 'univ', type: 'custom', data: { label: 'Universe', description: 'The expanses of space', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'gal', type: 'custom', data: { label: 'Galaxies', description: 'Systems of stars and dust', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'sta', type: 'custom', data: { label: 'Stars', description: 'Luminous spheres of plasma', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'mw', type: 'custom', data: { label: 'Milky Way', description: 'Our home galaxy', status: 'untouched' }, position: { x: 0, y: 0 } },
+
+    { id: 'ss', type: 'custom', data: { label: 'Solar System', description: 'Our planetary system', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'sun', type: 'custom', data: { label: 'Sun', description: 'The central star', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'pln', type: 'custom', data: { label: 'Planets', description: 'Major celestial bodies', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'ipln', type: 'custom', data: { label: 'Inner Planets', description: 'Terrestrial planets', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'opln', type: 'custom', data: { label: 'Outer Planets', description: 'Gas and ice giants', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'obod', type: 'custom', data: { label: 'Other Bodies', description: 'Smaller celestial objects', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'mo', type: 'custom', data: { label: 'Moons', description: 'Natural satellites', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'ast', type: 'custom', data: { label: 'Asteroids', description: 'Rocky remnants', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'com', type: 'custom', data: { label: 'Comets', description: 'Icy visitors', status: 'untouched' }, position: { x: 0, y: 0 } },
+
+    { id: 'mg', type: 'custom', data: { label: 'Motion & Gravity', description: 'Forces and movements', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'rot', type: 'custom', data: { label: 'Rotation', description: 'Spinning on axis', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'rev', type: 'custom', data: { label: 'Revolution', description: 'Orbiting a body', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'grav', type: 'custom', data: { label: 'Gravity', description: 'Attractive force', status: 'untouched' }, position: { x: 0, y: 0 } },
+
+    { id: 'om', type: 'custom', data: { label: 'Orbital Mechanics', description: 'Physics of orbits', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'co', type: 'custom', data: { label: 'Circular Orbit', description: 'Perfect circle path', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'eo', type: 'custom', data: { label: 'Elliptical Orbit', description: 'Oval-shaped path', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'op', type: 'custom', data: { label: 'Orbital Period', description: 'Time to complete orbit', status: 'untouched' }, position: { x: 0, y: 0 } },
+
+    { id: 'kep', type: 'custom', data: { label: 'Kepler', description: 'Laws of planetary motion', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k1', type: 'custom', data: { label: 'First Law', description: 'Law of Ellipses', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k1eo', type: 'custom', data: { label: 'Elliptical Orbit', description: 'Planets move in ellipses', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k1sf', type: 'custom', data: { label: 'Sun at Focus', description: 'The Sun is at one focus', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k2', type: 'custom', data: { label: 'Second Law', description: 'Law of Equal Areas', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k2ea', type: 'custom', data: { label: 'Equal Areas', description: 'Sweeps equal areas', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k2sc', type: 'custom', data: { label: 'Speed Changes', description: 'Faster near the Sun', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k3', type: 'custom', data: { label: 'Third Law', description: 'Law of Harmonies', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k3op', type: 'custom', data: { label: 'Orbital Period', description: 'Square of period', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'k3ds', type: 'custom', data: { label: 'Distance from Sun', description: 'Cube of distance', status: 'untouched' }, position: { x: 0, y: 0 } },
+
+    { id: 'app', type: 'custom', data: { label: 'Applications', description: 'Real-world uses', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'sat', type: 'custom', data: { label: 'Satellites', description: 'Artificial orbits', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'sm', type: 'custom', data: { label: 'Space Missions', description: 'Exploration crafts', status: 'untouched' }, position: { x: 0, y: 0 } },
+    { id: 'pd', type: 'custom', data: { label: 'Planet Discovery', description: 'Finding exoplanets', status: 'untouched' }, position: { x: 0, y: 0 } }
   ];
 
-  const initialEdges = [
-    { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: '#eab308', strokeWidth: 2 } },
-    { id: 'e2-3', source: '2', target: '3', markerEnd: { type: MarkerType.ArrowClosed, color: '#d1d5db' }, style: { stroke: '#d1d5db', strokeWidth: 2 } },
-    { id: 'e2-4', source: '2', target: '4', markerEnd: { type: MarkerType.ArrowClosed, color: '#d1d5db' }, style: { stroke: '#d1d5db', strokeWidth: 2 } },
-    { id: 'e3-5', source: '3', target: '5', markerEnd: { type: MarkerType.ArrowClosed, color: '#d1d5db' }, style: { stroke: '#d1d5db', strokeWidth: 2 } },
-    { id: 'e4-5', source: '4', target: '5', markerEnd: { type: MarkerType.ArrowClosed, color: '#d1d5db' }, style: { stroke: '#d1d5db', strokeWidth: 2 } },
-  ];
+  const defaultEdges = [
+    { id: 'root-univ', source: 'root', target: 'univ' },
+    { id: 'univ-gal', source: 'univ', target: 'gal' },
+    { id: 'univ-sta', source: 'univ', target: 'sta' },
+    { id: 'univ-mw', source: 'univ', target: 'mw' },
+
+    { id: 'root-ss', source: 'root', target: 'ss' },
+    { id: 'ss-sun', source: 'ss', target: 'sun' },
+    { id: 'ss-pln', source: 'ss', target: 'pln' },
+    { id: 'pln-ipln', source: 'pln', target: 'ipln' },
+    { id: 'pln-opln', source: 'pln', target: 'opln' },
+    { id: 'ss-obod', source: 'ss', target: 'obod' },
+    { id: 'obod-mo', source: 'obod', target: 'mo' },
+    { id: 'obod-ast', source: 'obod', target: 'ast' },
+    { id: 'obod-com', source: 'obod', target: 'com' },
+
+    { id: 'root-mg', source: 'root', target: 'mg' },
+    { id: 'mg-rot', source: 'mg', target: 'rot' },
+    { id: 'mg-rev', source: 'mg', target: 'rev' },
+    { id: 'mg-grav', source: 'mg', target: 'grav' },
+
+    { id: 'root-om', source: 'root', target: 'om' },
+    { id: 'om-co', source: 'om', target: 'co' },
+    { id: 'om-eo', source: 'om', target: 'eo' },
+    { id: 'om-op', source: 'om', target: 'op' },
+
+    { id: 'root-kep', source: 'root', target: 'kep' },
+    { id: 'kep-k1', source: 'kep', target: 'k1' },
+    { id: 'k1-k1eo', source: 'k1', target: 'k1eo' },
+    { id: 'k1-k1sf', source: 'k1', target: 'k1sf' },
+    { id: 'kep-k2', source: 'kep', target: 'k2' },
+    { id: 'k2-k2ea', source: 'k2', target: 'k2ea' },
+    { id: 'k2-k2sc', source: 'k2', target: 'k2sc' },
+    { id: 'kep-k3', source: 'kep', target: 'k3' },
+    { id: 'k3-k3op', source: 'k3', target: 'k3op' },
+    { id: 'k3-k3ds', source: 'k3', target: 'k3ds' },
+
+    { id: 'root-app', source: 'root', target: 'app' },
+    { id: 'app-sat', source: 'app', target: 'sat' },
+    { id: 'app-sm', source: 'app', target: 'sm' },
+    { id: 'app-pd', source: 'app', target: 'pd' }
+  ].map((e: any) => {
+      const sourceNode = defaultNodes.find((n: any) => n.id === e.source);
+      const isCompleted = sourceNode?.data?.status === 'completed';
+      return {
+          ...e,
+          animated: isCompleted,
+          style: { stroke: isCompleted ? '#eab308' : '#d1d5db', strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: isCompleted ? '#eab308' : '#d1d5db' }
+      };
+  });
+
+  const initialNodes = defaultNodes;
+      
+  const initialEdges = defaultEdges;
 
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(() => getLayoutedElements(initialNodes, initialEdges), []);
 
@@ -129,8 +221,8 @@ export default function Roadmap() {
   };
 
   return (
-    <div className="h-screen w-full bg-black flex flex-col p-4 md:p-6 lg:p-8 relative">
-      <div className="flex-1 w-full relative bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+    <div className="h-screen w-full bg-[#fafaf8] flex flex-col p-4 md:p-6 lg:p-8 relative overflow-hidden">
+      <div className="flex-1 w-full relative z-10 bg-white rounded-3xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
         <header className="absolute top-0 left-0 right-0 z-10 px-8 py-6 flex justify-between items-center pointer-events-none">
           <div className="pointer-events-auto">
             <button onClick={() => navigate('/workspace')} className="p-2 -ml-2 rounded-full hover:bg-black/5 transition-colors group bg-white shadow-sm border border-gray-100">
@@ -158,7 +250,7 @@ export default function Roadmap() {
           maxZoom={1.5}
           className="bg-transparent"
         >
-          <Background color="#d1d5db" gap={24} size={2} />
+          <Background variant="lines" color="#f9fafb" gap={80} size={3} />
           <Controls 
             className="!bg-transparent !border-0 !shadow-none [&>button]:!bg-white [&>button]:!border [&>button]:!border-gray-200 [&>button]:!shadow-sm [&>button]:!rounded-xl [&>button]:!mb-2 [&>button]:!w-8 [&>button]:!h-8" 
             showInteractive={false} 
@@ -173,12 +265,12 @@ export default function Roadmap() {
          className="absolute bottom-8 right-8 bg-white/90 backdrop-blur-md px-5 py-5 rounded-xl shadow-lg border border-gray-100 flex flex-col gap-4 z-20 pointer-events-auto"
       >
          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <div className="w-4 h-4 rounded-full border-2 border-green-600 bg-green-200" />
             <span className="text-sm font-medium text-gray-600">Completed</span>
          </div>
          <div className="w-full h-px bg-gray-100" />
          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-yellow-500 bg-yellow-200" />
             <span className="text-sm font-medium text-gray-600">In Progress</span>
          </div>
          <div className="w-full h-px bg-gray-100" />
