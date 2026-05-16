@@ -3,7 +3,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="">
     <source media="(prefers-color-scheme: light)" srcset="">
-    <img alt="MOOTION" src="Frontend/public/assests/image2.png" width="600">
+    <img alt="MOOTION" src="Frontend\public\read\home.png" width="600">
   </picture>
   <br/>
 </p>
@@ -837,7 +837,7 @@ Distributed under the **Apache 2.0 License**. See `LICENSE` for more information
 
 # 👥 Team — Evolve AI
 
-Built for the **AI4India Hackathon 2024**, targeting 250 million STEM learners in India.
+Built for the **AI4India Hackathon 2026**, targeting 250 million STEM learners in India.
 
 | | Name | Role |
 |---|---|---|
@@ -851,5 +851,5 @@ Built for the **AI4India Hackathon 2024**, targeting 250 million STEM learners i
 ---
 
 <p align="center">
-  <sub>© 2024 MOOTION Studio — AI4India Hackathon 2024</sub>
+  <sub>© 2026 MOOTION Studio — AI4India Hackathon 2026</sub>
 </p>
