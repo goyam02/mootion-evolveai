@@ -523,8 +523,8 @@ Serve generated video. Returns `404` if not found.
 
 | | |
 |---|---|
-| **Workspace Selection** — Two entry points: "Study a Topic" (free-text input) or "Upload Syllabus" (drag-and-drop file). | ![Workspace](assets/screenshots/workspace.png) |
-| **Interactive Roadmap** — dagre-layouted directed graph with ~40 concept nodes, zoom/pan controls via React Flow, legend panel (completed/in-progress/up-next), back navigation. | ![Roadmap](assets/screenshots/roadmap.png) |
+| **Workspace Selection** — Two entry points: "Study a Topic" (free-text input) or "Upload Syllabus" (drag-and-drop file). | ![Workspace](Frontend/public/read/workspace.png) |
+| **Interactive Roadmap** — dagre-layouted directed graph with ~40 concept nodes, zoom/pan controls via React Flow, legend panel (completed/in-progress/up-next), back navigation. | ![Roadmap](Frontend/public/read/road.png) |
 
 ### Concept Workspace
 
