@@ -517,7 +517,7 @@ Serve generated video. Returns `404` if not found.
 | | |
 |---|---|
 | **Animated Hero** — Pixel-art "MOOTION" logo built from spring-animated SVG rectangles, followed by a scroll-triggered pixel-art sequence (potion → π symbol → atom). Background grid with decorative scribble SVGs. | ![Hero](Frontend/public/assests/image2.png) |
-| **5-Step Onboarding** — Collects name, email, topic preferences (up to 5 from 10 STEM categories), learning style (Visual/Auditory/Reading/Kinesthetic), and learning pace. Progress bar, animated grid background with randomly pulsing cells. |![Onboarding](Frontend\public\read\onboard.png) |
+| **5-Step Onboarding** — Collects name, email, topic preferences (up to 5 from 10 STEM categories), learning style (Visual/Auditory/Reading/Kinesthetic), and learning pace. Progress bar, animated grid background with randomly pulsing cells. |![Onboarding](Frontend/public/read/onboard.png) |
 
 ### Workspace Selection & Roadmap
 
